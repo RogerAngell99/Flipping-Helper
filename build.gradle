@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenLocal()
+    maven { url = 'https://repo.runelite.net' }
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
+
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    compileOnly 'com.google.code.gson:gson:2.13.2'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:3.4.6'
+    testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
+    testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
+
+    testRuntimeOnly 'com.google.code.gson:gson:2.13.2'
+}
+
+group = 'flippinghelper'
+version = '1.0.0'
+sourceCompatibility = '1.11'
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java', 'src/main/flippinghelper']
+        }
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('runelite', JavaExec) {
+    group = 'application'
+    description = 'Runs the RuneLite client with the Flipping Helper plugin'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass.set('flippinghelper.FlippingHelperPluginTest')
+    jvmArgs '-ea', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
+    args '--developer-mode'
+}

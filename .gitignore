@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!src/**/build/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Environment
+.env
+
+# Documentation
+CLAUDE.md
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg
