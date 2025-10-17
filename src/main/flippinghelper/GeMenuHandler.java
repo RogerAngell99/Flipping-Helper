@@ -80,7 +80,6 @@ public class GeMenuHandler {
             .createMenuEntry(-1)
             .setOption(option)
             .setTarget(event.getTarget())
-            .setType(event.getType())
             .setIdentifier(event.getIdentifier())
             .setParam0(event.getActionParam0())
             .setParam1(event.getActionParam1());
@@ -101,7 +100,7 @@ public class GeMenuHandler {
         log.info("Quick action requested: {} for item {} ({})", action, item.getName(), item.getId());
 
         String actionType = item.getPredictedAction();
-        int price = "buy".equals(actionType) ? item.getAdjustedLowPrice() : item.getAdjustedHighPrice();
+        long price = "buy".equals(actionType) ? item.getAdjustedLowPrice() : item.getAdjustedHighPrice();
         int quantity = item.getQuantity();
 
         log.info("Would {} {} x {} for {} gp each", actionType, quantity, item.getName(), price);
