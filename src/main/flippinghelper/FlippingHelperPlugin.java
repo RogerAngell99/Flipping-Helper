@@ -3,7 +3,11 @@ package flippinghelper;
 import com.google.inject.Provides;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -31,6 +35,12 @@ public class FlippingHelperPlugin extends Plugin
 	@Inject
 	private ItemManager itemManager;
 
+	@Inject
+	private HighlightManager highlightManager;
+
+	@Inject
+	private GeMenuHandler menuHandler;
+
 	private FlippingHelperPanel panel;
 	private NavigationButton navButton;
 	private final FlippingApiClient apiClient = new FlippingApiClient();
@@ -46,7 +56,13 @@ public class FlippingHelperPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
-		panel = new FlippingHelperPanel(itemManager, this::refreshSuggestion, this::refreshItemPrices, this::reloadAllItems);
+		panel = new FlippingHelperPanel(
+			itemManager,
+			this::refreshSuggestion,
+			this::refreshItemPrices,
+			this::reloadAllItems,
+			this::handleItemHover
+		);
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/icon.png");
 		navButton = NavigationButton.builder()
 				.tooltip("Flipping Helper")
@@ -82,6 +98,45 @@ public class FlippingHelperPlugin extends Plugin
 	protected void shutDown() throws Exception
 	{
 		clientToolbar.removeNavigation(navButton);
+		highlightManager.removeAllHighlights();
+	}
+
+	/**
+	 * Handle item hover/selection from the panel.
+	 * Updates the highlight manager to show GE overlays.
+	 */
+	private void handleItemHover(FlippingItem item) {
+		if (item != null) {
+			log.debug("Item hovered: {} ({})", item.getName(), item.getId());
+			highlightManager.setCurrentItem(item);
+		} else {
+			log.debug("Item hover cleared");
+			highlightManager.clearCurrentItem();
+		}
+	}
+
+	/**
+	 * Update highlights on every game tick to keep them in sync with the GE state.
+	 */
+	@Subscribe
+	public void onGameTick(GameTick event) {
+		highlightManager.redraw();
+	}
+
+	/**
+	 * Handle menu entries being added to inject custom options.
+	 */
+	@Subscribe
+	public void onMenuEntryAdded(MenuEntryAdded event) {
+		menuHandler.onMenuEntryAdded(event);
+	}
+
+	/**
+	 * Handle menu options being clicked for custom actions.
+	 */
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event) {
+		menuHandler.onMenuOptionClicked(event);
 	}
 
 	private void fetchAndDisplayItems() {
