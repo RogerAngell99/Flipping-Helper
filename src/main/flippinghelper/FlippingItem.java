@@ -19,4 +19,10 @@ public class FlippingItem {
     private boolean members;
     private List<Integer> sparklineData;
     private String predictedAction;
+
+    // Dump detection fields
+    private Double dumpSignalScore;  // API returns decimal values like 0.443, 0.291
+    private List<String> dumpSignalReasons;
+    private Long dumpPeakPrice;
+    private Long dumpDetectedAt;
 }

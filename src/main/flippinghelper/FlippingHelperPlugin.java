@@ -236,9 +236,53 @@ public class FlippingHelperPlugin extends Plugin
 		new SwingWorker<List<FlippingItem>, Void>() {
 			@Override
 			protected List<FlippingItem> doInBackground() throws Exception {
-				allItems = apiClient.getItems();
+				log.info("Fetching items from API...");
+				List<FlippingItem> fetchedItems = apiClient.getItems();
+				log.info("API returned {} items", fetchedItems.size());
+
+				if (fetchedItems.isEmpty()) {
+					log.warn("No items received from API!");
+					return new ArrayList<>();
+				}
+
+				// Log sample of first item for debugging
+				if (!fetchedItems.isEmpty()) {
+					FlippingItem sample = fetchedItems.get(0);
+					log.info("Sample item: {} - Price: {}, Profit: {}, Volume: {}, Score: {}, Dump: {}",
+						sample.getName(),
+						sample.getAdjustedLowPrice(),
+						sample.getProfit(),
+						sample.getDailyVolume(),
+						sample.getScore(),
+						sample.getDumpSignalScore());
+				}
+
+				// Count items with dump signals
+				long dumpItemCount = fetchedItems.stream()
+					.filter(item -> item.getDumpSignalScore() != null && item.getDumpSignalScore() > 0)
+					.count();
+				log.info("Items with dump signals: {} out of {}", dumpItemCount, fetchedItems.size());
+
+				// Log a few items with dump signals if any exist
+				fetchedItems.stream()
+					.filter(item -> item.getDumpSignalScore() != null && item.getDumpSignalScore() > 0)
+					.limit(3)
+					.forEach(item -> log.info("Dump item found: {} (ID: {}) - Dump Score: {}, Reasons: {}, Peak Price: {}",
+						item.getName(),
+						item.getId(),
+						item.getDumpSignalScore(),
+						item.getDumpSignalReasons(),
+						item.getDumpPeakPrice()));
+
+				// Apply filters from config
+				allItems = filterItems(fetchedItems);
+
 				// Ordena por score descendente
 				allItems.sort(Comparator.comparing(FlippingItem::getScore).reversed());
+
+				log.info("Final result: {} items to display (from {} fetched, {} after filtering)",
+					Math.min(MAX_SUGGESTIONS, allItems.size()), fetchedItems.size(), allItems.size());
+
 				return selectTopSuggestions();
 			}
 
@@ -261,6 +305,100 @@ public class FlippingHelperPlugin extends Plugin
 				}
 			}
 		}.execute();
+	}
+
+	/**
+	 * Apply filters from config to the list of items.
+	 * Package-private for testing.
+	 */
+	List<FlippingItem> filterItems(List<FlippingItem> items) {
+		// Log current filter settings
+		log.info("=== Filter Settings ===");
+		log.info("Min Buy Price: {}", config.minBuyPrice());
+		log.info("Max Buy Price: {}", config.maxBuyPrice());
+		log.info("Min Profit: {}", config.minProfit());
+		log.info("Min Daily Volume: {}", config.minDailyVolume());
+		log.info("Min Score: {}", config.minScore());
+		log.info("Dump Filter: {}", config.dumpFilter());
+		log.info("======================");
+
+		List<FlippingItem> filtered = items.stream()
+			.filter(item -> {
+				boolean passes = passesFilters(item);
+				if (!passes) {
+					log.debug("Item filtered out: {} - Price: {}, Profit: {}, Volume: {}, Score: {}, Dump: {}",
+						item.getName(),
+						item.getAdjustedLowPrice(),
+						item.getProfit(),
+						item.getDailyVolume(),
+						item.getScore(),
+						item.getDumpSignalScore());
+				}
+				return passes;
+			})
+			.collect(Collectors.toList());
+
+		log.info("Items after filtering: {} out of {}", filtered.size(), items.size());
+		return filtered;
+	}
+
+	/**
+	 * Check if an item passes all configured filters.
+	 * Package-private for testing.
+	 */
+	boolean passesFilters(FlippingItem item) {
+		// Minimum buy price filter
+		int minBuyPrice = config.minBuyPrice();
+		if (minBuyPrice > 0 && item.getAdjustedLowPrice() < minBuyPrice) {
+			return false;
+		}
+
+		// Maximum buy price filter
+		int maxBuyPrice = config.maxBuyPrice();
+		if (maxBuyPrice > 0 && item.getAdjustedLowPrice() > maxBuyPrice) {
+			return false;
+		}
+
+		// Minimum profit filter
+		int minProfit = config.minProfit();
+		if (minProfit > 0 && item.getProfit() < minProfit) {
+			return false;
+		}
+
+		// Minimum daily volume filter
+		int minDailyVolume = config.minDailyVolume();
+		if (minDailyVolume > 0 && item.getDailyVolume() < minDailyVolume) {
+			return false;
+		}
+
+		// Minimum score filter
+		double minScore = config.minScore();
+		if (minScore > 0 && item.getScore() < minScore) {
+			return false;
+		}
+
+		// Dump filter
+		FlippingHelperConfig.DumpFilter dumpFilter = config.dumpFilter();
+		boolean isDumpItem = item.getDumpSignalScore() != null && item.getDumpSignalScore() > 0;
+
+		switch (dumpFilter) {
+			case DUMP_ONLY:
+				if (!isDumpItem) {
+					return false;
+				}
+				break;
+			case NO_DUMP:
+				if (isDumpItem) {
+					return false;
+				}
+				break;
+			case ALL:
+			default:
+				// No filtering based on dump status
+				break;
+		}
+
+		return true;
 	}
 
 	private List<FlippingItem> selectTopSuggestions() {
