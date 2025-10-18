@@ -22,18 +22,22 @@ public class FlippingHelperPanel extends PluginPanel {
     private final Consumer<Integer> refreshCallback;
     private final Consumer<Integer> refreshPricesCallback;
     private final Runnable reloadAllCallback;
+    private final Consumer<FlippingItem> hoverCallback;
 
     private final List<SuggestionRow> suggestionRows = new ArrayList<>();
     private final JPanel suggestionsContainer;
     private SuggestionRow selectedRow = null;
+    private SuggestionRow hoveredRow = null;
 
     public FlippingHelperPanel(ItemManager itemManager, Consumer<Integer> refreshCallback,
-                                Consumer<Integer> refreshPricesCallback, Runnable reloadAllCallback) {
+                                Consumer<Integer> refreshPricesCallback, Runnable reloadAllCallback,
+                                Consumer<FlippingItem> hoverCallback) {
         super();
         this.itemManager = itemManager;
         this.refreshCallback = refreshCallback;
         this.refreshPricesCallback = refreshPricesCallback;
         this.reloadAllCallback = reloadAllCallback;
+        this.hoverCallback = hoverCallback;
 
         setLayout(new BorderLayout());
         setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -94,6 +98,7 @@ public class FlippingHelperPanel extends PluginPanel {
         private final JButton nextItemButton;
         private final JButton refreshPricesButton;
         private boolean selected = false;
+        private FlippingItem currentItem = null;
 
         public SuggestionRow(int index) {
             this.index = index;
@@ -163,18 +168,18 @@ public class FlippingHelperPanel extends PluginPanel {
                 }
             });
 
-            // Adiciona efeito hover
+            // Adiciona efeito hover e notifica o callback
             panel.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseEntered(MouseEvent e) {
-                    if (!selected) {
-                        panel.setCursor(new Cursor(Cursor.HAND_CURSOR));
-                    }
+                    panel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+                    handleRowHover(true);
                 }
 
                 @Override
                 public void mouseExited(MouseEvent e) {
                     panel.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
+                    handleRowHover(false);
                 }
             });
         }
@@ -188,6 +193,29 @@ public class FlippingHelperPanel extends PluginPanel {
             // Seleciona esta linha
             setSelected(true);
             selectedRow = this;
+
+            // Notifica o callback de hover com o item selecionado
+            if (currentItem != null && hoverCallback != null) {
+                hoverCallback.accept(currentItem);
+            }
+        }
+
+        private void handleRowHover(boolean entered) {
+            if (entered) {
+                hoveredRow = this;
+                // Notifica o callback quando o mouse entra
+                if (currentItem != null && hoverCallback != null) {
+                    hoverCallback.accept(currentItem);
+                }
+            } else {
+                if (hoveredRow == this) {
+                    hoveredRow = null;
+                }
+                // Quando o mouse sai, limpa o highlight apenas se não houver seleção
+                if (selectedRow == null && hoverCallback != null) {
+                    hoverCallback.accept(null);
+                }
+            }
         }
 
         public void setSelected(boolean selected) {
@@ -214,6 +242,8 @@ public class FlippingHelperPanel extends PluginPanel {
         }
 
         public void updateItem(FlippingItem item) {
+            this.currentItem = item;
+
             String action = item.getPredictedAction().equals("buy") ? "Buy" : "Sell";
             String itemName = item.getName();
             String quantity = String.valueOf(item.getQuantity());
@@ -248,6 +278,7 @@ public class FlippingHelperPanel extends PluginPanel {
         }
 
         public void clear() {
+            this.currentItem = null;
             infoLabel.setText("");
             iconLabel.setIcon(null);
             setSelected(false);
