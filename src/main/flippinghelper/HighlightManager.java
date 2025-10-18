@@ -2,47 +2,68 @@ package flippinghelper;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.widgets.Widget;
+import net.runelite.api.Point;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.swing.*;
-import java.awt.*;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Manages widget highlights for the GE interface.
- * Highlights relevant widgets based on the currently selected/hovered item.
+ * Uses a single persistent overlay that checks state on each render.
  */
 @Slf4j
 @Singleton
 public class HighlightManager {
 
-    private static final Color HIGHLIGHT_COLOR = new Color(30, 144, 255); // Dodger blue
-
     private final Client client;
     private final GrandExchangeHelper geHelper;
     private final OverlayManager overlayManager;
+    private final GeInteractionHandler interactionHandler;
 
-    private final List<WidgetHighlightOverlay> activeOverlays = new ArrayList<>();
+    private GeHighlightOverlay highlightOverlay;
     private FlippingItem currentItem = null;
     private boolean highlightsEnabled = true;
 
     @Inject
-    public HighlightManager(Client client, GrandExchangeHelper geHelper, OverlayManager overlayManager) {
+    public HighlightManager(Client client, GrandExchangeHelper geHelper, OverlayManager overlayManager,
+                           GeInteractionHandler interactionHandler) {
         this.client = client;
         this.geHelper = geHelper;
         this.overlayManager = overlayManager;
+        this.interactionHandler = interactionHandler;
+    }
+
+    /**
+     * Initialize the overlay system.
+     * Must be called after injection is complete.
+     */
+    public void initialize() {
+        if (highlightOverlay == null) {
+            highlightOverlay = new GeHighlightOverlay(client, this, geHelper);
+            overlayManager.add(highlightOverlay);
+            log.debug("GeHighlightOverlay initialized and added");
+        }
+    }
+
+    /**
+     * Shutdown the overlay system.
+     */
+    public void shutdown() {
+        if (highlightOverlay != null) {
+            overlayManager.remove(highlightOverlay);
+            highlightOverlay = null;
+            log.debug("GeHighlightOverlay removed");
+        }
     }
 
     /**
      * Set the item to highlight for.
+     * The overlay will pick this up on its next render.
      */
     public void setCurrentItem(FlippingItem item) {
         this.currentItem = item;
-        redraw();
+        log.debug("Current item set to: {}", item != null ? item.getName() : "null");
     }
 
     /**
@@ -50,7 +71,7 @@ public class HighlightManager {
      */
     public void clearCurrentItem() {
         this.currentItem = null;
-        removeAllHighlights();
+        log.debug("Current item cleared");
     }
 
     /**
@@ -58,139 +79,14 @@ public class HighlightManager {
      */
     public void setHighlightsEnabled(boolean enabled) {
         this.highlightsEnabled = enabled;
-        if (!enabled) {
-            removeAllHighlights();
-        } else {
-            redraw();
-        }
+        log.debug("Highlights enabled: {}", enabled);
     }
 
     /**
-     * Redraw all highlights based on current state.
+     * Check if highlights are enabled.
      */
-    public void redraw() {
-        removeAllHighlights();
-
-        if (!highlightsEnabled || currentItem == null) {
-            return;
-        }
-
-        if (!geHelper.isOpen()) {
-            return;
-        }
-
-        if (geHelper.isHomeScreenOpen()) {
-            drawHomeScreenHighlights();
-        } else if (geHelper.isSlotOpen()) {
-            drawOfferScreenHighlights();
-        }
-    }
-
-    /**
-     * Draw highlights on the GE home screen.
-     */
-    private void drawHomeScreenHighlights() {
-        String action = currentItem.getPredictedAction();
-
-        if ("buy".equals(action)) {
-            // Highlight an empty buy slot
-            int emptySlot = geHelper.findEmptySlot();
-            if (emptySlot != -1) {
-                Widget buyButton = geHelper.getBuyButton(emptySlot);
-                if (buyButton != null && !buyButton.isHidden()) {
-                    addHighlight(buyButton, HIGHLIGHT_COLOR, new Rectangle(0, 0, 45, 44));
-                    log.debug("Highlighting buy button for slot {}", emptySlot);
-                }
-            }
-        } else if ("sell".equals(action)) {
-            // Highlight the item in inventory
-            Widget inventoryItem = findInventoryItemWidget(currentItem.getId());
-            if (inventoryItem != null && !inventoryItem.isHidden()) {
-                addHighlight(inventoryItem, HIGHLIGHT_COLOR, new Rectangle(0, 0, 34, 32));
-                log.debug("Highlighting inventory item {}", currentItem.getName());
-            }
-        }
-    }
-
-    /**
-     * Draw highlights on the GE offer screen.
-     */
-    private void drawOfferScreenHighlights() {
-        // Highlight price and quantity buttons
-        Widget setPriceButton = geHelper.getSetPriceButton();
-        if (setPriceButton != null && !setPriceButton.isHidden()) {
-            addHighlight(setPriceButton, HIGHLIGHT_COLOR, new Rectangle(1, 6, 33, 23));
-        }
-
-        Widget setQuantityButton = geHelper.getSetQuantityButton();
-        if (setQuantityButton != null && !setQuantityButton.isHidden()) {
-            addHighlight(setQuantityButton, HIGHLIGHT_COLOR, new Rectangle(1, 6, 33, 23));
-        }
-
-        // Optionally highlight confirm button
-        Widget confirmButton = geHelper.getConfirmButton();
-        if (confirmButton != null && !confirmButton.isHidden()) {
-            addHighlight(confirmButton, HIGHLIGHT_COLOR, new Rectangle(1, 1, 150, 38));
-        }
-    }
-
-    /**
-     * Add a highlight overlay for a widget.
-     */
-    private void addHighlight(Widget widget, Color color, Rectangle relativeBounds) {
-        SwingUtilities.invokeLater(() -> {
-            WidgetHighlightOverlay overlay = new WidgetHighlightOverlay(widget, color, relativeBounds);
-            activeOverlays.add(overlay);
-            overlayManager.add(overlay);
-        });
-    }
-
-    /**
-     * Remove all active highlights.
-     */
-    public void removeAllHighlights() {
-        SwingUtilities.invokeLater(() -> {
-            for (WidgetHighlightOverlay overlay : activeOverlays) {
-                overlayManager.remove(overlay);
-            }
-            activeOverlays.clear();
-        });
-    }
-
-    /**
-     * Find the inventory widget for a specific item ID.
-     */
-    private Widget findInventoryItemWidget(String itemIdStr) {
-        try {
-            int itemId = Integer.parseInt(itemIdStr);
-
-            // GE inventory widget (when GE is open)
-            Widget inventory = client.getWidget(467, 0);
-            if (inventory == null) {
-                // Regular inventory widget
-                inventory = client.getWidget(149, 0);
-            }
-
-            if (inventory == null) {
-                return null;
-            }
-
-            Widget[] children = inventory.getDynamicChildren();
-            if (children == null) {
-                return null;
-            }
-
-            // Find the item in inventory
-            for (Widget widget : children) {
-                if (widget.getItemId() == itemId) {
-                    return widget;
-                }
-            }
-        } catch (NumberFormatException e) {
-            log.warn("Invalid item ID: {}", itemIdStr);
-        }
-
-        return null;
+    public boolean isHighlightsEnabled() {
+        return highlightsEnabled;
     }
 
     /**
@@ -198,5 +94,38 @@ public class HighlightManager {
      */
     public FlippingItem getCurrentItem() {
         return currentItem;
+    }
+
+    /**
+     * Redraw all highlights based on current state.
+     * With persistent overlay, this is a no-op - overlay checks state itself.
+     */
+    public void redraw() {
+        // No-op: the persistent overlay handles its own rendering
+    }
+
+    /**
+     * Remove all active highlights.
+     * With persistent overlay, this is a no-op.
+     */
+    public void removeAllHighlights() {
+        // No-op: we keep the overlay registered, it just won't render anything if currentItem is null
+    }
+
+    /**
+     * Handle mouse movement for hover detection.
+     * Currently disabled with new overlay system.
+     */
+    public void handleMouseMove(Point mousePos) {
+        // TODO: Implement if needed with persistent overlay
+    }
+
+    /**
+     * Handle mouse click for overlay interaction.
+     * Currently disabled with new overlay system.
+     */
+    public boolean handleMouseClick(Point mousePos) {
+        // TODO: Implement if needed with persistent overlay
+        return false;
     }
 }

@@ -1,5 +1,7 @@
 package flippinghelper;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
@@ -14,6 +16,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  * Overlay that highlights a specific widget with a colored rectangle.
  * Used to guide users to specific GE interface elements.
  */
+@Slf4j
 public class WidgetHighlightOverlay extends Overlay {
     private final Widget widget;
     private final Color color;
@@ -31,27 +34,35 @@ public class WidgetHighlightOverlay extends Overlay {
 
     @Override
     public Dimension render(Graphics2D graphics) {
-        if (widget == null || widget.isHidden()) {
+        try {
+            if (graphics == null || widget == null || color == null || relativeBounds == null) {
+                return null;
+            }
+
+            if (widget.isHidden()) {
+                return null;
+            }
+
+            Rectangle widgetBounds = widget.getBounds();
+            if (widgetBounds == null) {
+                return null;
+            }
+
+            // Apply relative bounds adjustments
+            Rectangle highlightBounds = new Rectangle(
+                widgetBounds.x + relativeBounds.x,
+                widgetBounds.y + relativeBounds.y,
+                relativeBounds.width,
+                relativeBounds.height
+            );
+
+            // Draw semi-transparent highlight
+            graphics.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 100));
+            graphics.fillRect(highlightBounds.x, highlightBounds.y, highlightBounds.width, highlightBounds.height);
+        } catch (Throwable t) {
+            // Silently ignore rendering errors - widget may have become invalid
             return null;
         }
-
-        Rectangle widgetBounds = widget.getBounds();
-        if (widgetBounds == null) {
-            return null;
-        }
-
-        // Apply relative bounds adjustments
-        Rectangle highlightBounds = new Rectangle(
-            widgetBounds.x + relativeBounds.x,
-            widgetBounds.y + relativeBounds.y,
-            relativeBounds.width,
-            relativeBounds.height
-        );
-
-        // Draw semi-transparent highlight
-        graphics.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 100));
-        graphics.fillRect(highlightBounds.x, highlightBounds.y, highlightBounds.width, highlightBounds.height);
-
         return null;
     }
 }
