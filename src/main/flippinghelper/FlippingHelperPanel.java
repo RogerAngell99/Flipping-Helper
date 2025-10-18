@@ -28,6 +28,7 @@ public class FlippingHelperPanel extends PluginPanel {
     private final JPanel suggestionsContainer;
     private SuggestionRow selectedRow = null;
     private SuggestionRow hoveredRow = null;
+    private JButton reloadAllButton;
 
     public FlippingHelperPanel(ItemManager itemManager, Consumer<Integer> refreshCallback,
                                 Consumer<Integer> refreshPricesCallback, Runnable reloadAllCallback,
@@ -46,7 +47,7 @@ public class FlippingHelperPanel extends PluginPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setBorder(new EmptyBorder(0, 0, 10, 0));
 
-        JButton reloadAllButton = new JButton("Reload All Items");
+        reloadAllButton = new JButton("Reload All Items");
         reloadAllButton.setToolTipText("Fetch fresh data from API and reload all items");
         reloadAllButton.addActionListener(e -> reloadAllCallback.run());
         headerPanel.add(reloadAllButton, BorderLayout.CENTER);
@@ -84,6 +85,26 @@ public class FlippingHelperPanel extends PluginPanel {
     public void updateSuggestion(int index, FlippingItem item) {
         if (index >= 0 && index < suggestionRows.size()) {
             suggestionRows.get(index).updateItem(item);
+        }
+    }
+
+    public void setReloadAllButtonLoading(boolean loading) {
+        SwingUtilities.invokeLater(() -> {
+            if (loading) {
+                reloadAllButton.setText("Loading...");
+                reloadAllButton.setEnabled(false);
+                reloadAllButton.setBackground(Color.LIGHT_GRAY);
+            } else {
+                reloadAllButton.setText("Reload All Items");
+                reloadAllButton.setEnabled(true);
+                reloadAllButton.setBackground(null);
+            }
+        });
+    }
+
+    public void setRefreshButtonLoading(int index, boolean loading) {
+        if (index >= 0 && index < suggestionRows.size()) {
+            suggestionRows.get(index).setRefreshButtonLoading(loading);
         }
     }
 
@@ -283,6 +304,22 @@ public class FlippingHelperPanel extends PluginPanel {
             iconLabel.setIcon(null);
             setSelected(false);
             panel.setVisible(false);
+        }
+
+        public void setRefreshButtonLoading(boolean loading) {
+            SwingUtilities.invokeLater(() -> {
+                if (loading) {
+                    refreshPricesButton.setText("⟳");
+                    refreshPricesButton.setEnabled(false);
+                    refreshPricesButton.setBackground(Color.LIGHT_GRAY);
+                    refreshPricesButton.setToolTipText("Loading...");
+                } else {
+                    refreshPricesButton.setText("↻");
+                    refreshPricesButton.setEnabled(true);
+                    refreshPricesButton.setBackground(null);
+                    refreshPricesButton.setToolTipText("Refresh prices for this item");
+                }
+            });
         }
     }
 }

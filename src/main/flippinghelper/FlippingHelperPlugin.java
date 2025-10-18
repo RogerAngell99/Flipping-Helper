@@ -233,6 +233,9 @@ public class FlippingHelperPlugin extends Plugin
 	}
 
 	private void fetchAndDisplayItems() {
+		// Show loading state
+		panel.setReloadAllButtonLoading(true);
+
 		new SwingWorker<List<FlippingItem>, Void>() {
 			@Override
 			protected List<FlippingItem> doInBackground() throws Exception {
@@ -302,6 +305,9 @@ public class FlippingHelperPlugin extends Plugin
 					}
 				} catch (Exception e) {
 					log.error("Erro ao buscar ou exibir itens", e);
+				} finally {
+					// Always restore button state, even if there was an error
+					panel.setReloadAllButtonLoading(false);
 				}
 			}
 		}.execute();
@@ -464,6 +470,9 @@ public class FlippingHelperPlugin extends Plugin
 		String itemId = currentItem.getId();
 		log.info("Atualizando preços para o item {} (ID: {})", currentItem.getName(), itemId);
 
+		// Show loading state for this specific refresh button
+		panel.setRefreshButtonLoading(index, true);
+
 		new SwingWorker<FlippingItem, Void>() {
 			@Override
 			protected FlippingItem doInBackground() throws Exception {
@@ -507,6 +516,9 @@ public class FlippingHelperPlugin extends Plugin
 					}
 				} catch (Exception e) {
 					log.error("Erro ao atualizar preços do item {}", itemId, e);
+				} finally {
+					// Always restore button state, even if there was an error
+					panel.setRefreshButtonLoading(index, false);
 				}
 			}
 		}.execute();
