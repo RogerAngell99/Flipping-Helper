@@ -66,6 +66,9 @@ public class FlippingHelperPlugin extends Plugin
 	@Inject
 	private GeInteractionHandler interactionHandler;
 
+	@Inject
+	private GrandExchangeHelper grandExchangeHelper;
+
 	private FlippingHelperPanel panel;
 	private NavigationButton navButton;
 	private final FlippingApiClient apiClient = new FlippingApiClient();
@@ -296,9 +299,19 @@ public class FlippingHelperPlugin extends Plugin
 					if (!currentSuggestions.isEmpty()) {
 						log.info("Obtidos {} itens únicos", currentSuggestions.size());
 
+						// Get pinned item IDs
+						Map<Integer, String> pinnedItemIds = getPinnedItemIds();
+						Set<Integer> pinnedIndices = new HashSet<>();
+						for (int i = 0; i < currentSuggestions.size(); i++) {
+							FlippingItem item = currentSuggestions.get(i);
+							if (pinnedItemIds.containsKey(i) && pinnedItemIds.get(i).equals(item.getId())) {
+								pinnedIndices.add(i);
+							}
+						}
+
 						// IMPORTANTE: Toda atualização de UI deve ser feita no EDT
 						SwingUtilities.invokeLater(() -> {
-							panel.updateSuggestions(currentSuggestions);
+							panel.updateSuggestionsWithPinning(currentSuggestions, pinnedIndices);
 							panel.revalidate();
 							panel.repaint();
 						});
@@ -314,6 +327,18 @@ public class FlippingHelperPlugin extends Plugin
 	}
 
 	/**
+	 * Check if an item has an active GE offer (should be pinned).
+	 */
+	private boolean hasActiveGeOffer(FlippingItem item) {
+		// In test environment or if GE helper is not available, no items are pinned
+		if (grandExchangeHelper == null) {
+			return false;
+		}
+		Map<Integer, String> pinnedItemIds = getPinnedItemIds();
+		return pinnedItemIds.containsValue(item.getId());
+	}
+
+	/**
 	 * Apply filters from config to the list of items.
 	 * Package-private for testing.
 	 */
@@ -326,10 +351,18 @@ public class FlippingHelperPlugin extends Plugin
 		log.info("Min Daily Volume: {}", config.minDailyVolume());
 		log.info("Min Score: {}", config.minScore());
 		log.info("Dump Filter: {}", config.dumpFilter());
+		log.info("Min Quantity: {}", config.minQuantity());
+		log.info("Max Total Investment: {}", config.maxTotalInvestment());
 		log.info("======================");
 
 		List<FlippingItem> filtered = items.stream()
 			.filter(item -> {
+				// Never filter out items with active GE offers
+				if (hasActiveGeOffer(item)) {
+					log.debug("Item {} has active GE offer - exempt from filtering", item.getName());
+					return true;
+				}
+
 				boolean passes = passesFilters(item);
 				if (!passes) {
 					log.debug("Item filtered out: {} - Price: {}, Profit: {}, Volume: {}, Score: {}, Dump: {}",
@@ -404,21 +437,106 @@ public class FlippingHelperPlugin extends Plugin
 				break;
 		}
 
+		// Minimum quantity filter
+		int minQuantity = config.minQuantity();
+		if (minQuantity > 0 && item.getQuantity() < minQuantity) {
+			return false;
+		}
+
+		// Maximum total investment filter (quantity × buy price)
+		int maxTotalInvestment = config.maxTotalInvestment();
+		if (maxTotalInvestment > 0) {
+			long totalInvestment = (long) item.getQuantity() * (long) item.getAdjustedLowPrice();
+			if (totalInvestment > maxTotalInvestment) {
+				return false;
+			}
+		}
+
 		return true;
+	}
+
+	/**
+	 * Get a map of pinned items based on active GE offers.
+	 * Key = suggestion row index (0-7), Value = item ID from GE offer
+	 */
+	private Map<Integer, String> getPinnedItemIds() {
+		Map<Integer, String> pinnedItems = new HashMap<>();
+
+		// Check each GE slot (0-7)
+		for (int slot = 0; slot < 8; slot++) {
+			if (grandExchangeHelper.hasActiveOffer(slot)) {
+				int itemId = grandExchangeHelper.getOfferItemId(slot);
+				if (itemId != -1) {
+					// Pinned item for this slot = item ID as string
+					pinnedItems.put(slot, String.valueOf(itemId));
+					log.debug("GE slot {} has active offer for item ID: {}", slot, itemId);
+				}
+			}
+		}
+
+		return pinnedItems;
 	}
 
 	private List<FlippingItem> selectTopSuggestions() {
 		cleanExpiredCooldowns();
 
-		Set<String> displayedIds = currentSuggestions.stream()
-				.map(FlippingItem::getId)
-				.collect(Collectors.toSet());
+		// Get pinned items from active GE offers
+		Map<Integer, String> pinnedItemIds = getPinnedItemIds();
+		log.info("Found {} pinned items from active GE offers", pinnedItemIds.size());
+		for (Map.Entry<Integer, String> entry : pinnedItemIds.entrySet()) {
+			log.info("  Slot {}: Item ID {}", entry.getKey(), entry.getValue());
+		}
 
-		return allItems.stream()
-				.filter(item -> !cooldownMap.containsKey(item.getId())) // Filtra itens em cooldown
-				.filter(item -> !displayedIds.contains(item.getId())) // Filtra itens já sendo exibidos
-				.limit(MAX_SUGGESTIONS)
-				.collect(Collectors.toList());
+		// Create result list with nulls initially
+		List<FlippingItem> suggestions = new ArrayList<>(MAX_SUGGESTIONS);
+		for (int i = 0; i < MAX_SUGGESTIONS; i++) {
+			suggestions.add(null);
+		}
+
+		// Fill pinned slots first
+		Set<String> usedItemIds = new HashSet<>();
+		for (Map.Entry<Integer, String> entry : pinnedItemIds.entrySet()) {
+			int slot = entry.getKey();
+			String itemId = entry.getValue();
+
+			// Find the item in allItems
+			Optional<FlippingItem> pinnedItem = allItems.stream()
+				.filter(item -> item.getId().equals(itemId))
+				.findFirst();
+
+			if (pinnedItem.isPresent()) {
+				suggestions.set(slot, pinnedItem.get());
+				usedItemIds.add(itemId);
+				log.info("Successfully pinned item {} (ID: {}) to slot {}", pinnedItem.get().getName(), itemId, slot);
+			} else {
+				log.warn("Item ID {} has active GE offer in slot {} but was NOT found in API response (total items: {})",
+					itemId, slot, allItems.size());
+				// Log a few item IDs from allItems for debugging
+				if (!allItems.isEmpty()) {
+					log.warn("Sample item IDs in allItems: {}",
+						allItems.stream().limit(5).map(FlippingItem::getId).collect(Collectors.joining(", ")));
+				}
+			}
+		}
+
+		// Fill remaining slots with regular suggestions
+		List<FlippingItem> regularItems = allItems.stream()
+			.filter(item -> !cooldownMap.containsKey(item.getId())) // Not in cooldown
+			.filter(item -> !usedItemIds.contains(item.getId())) // Not already pinned
+			.collect(Collectors.toList());
+
+		int regularIndex = 0;
+		for (int i = 0; i < MAX_SUGGESTIONS && regularIndex < regularItems.size(); i++) {
+			if (suggestions.get(i) == null) { // Empty slot
+				suggestions.set(i, regularItems.get(regularIndex));
+				regularIndex++;
+			}
+		}
+
+		// Remove trailing nulls
+		suggestions.removeIf(item -> item == null);
+
+		return suggestions;
 	}
 
 	private void cleanExpiredCooldowns() {
@@ -506,8 +624,14 @@ public class FlippingHelperPlugin extends Plugin
 								updatedItem.getAdjustedHighPrice(),
 								updatedItem.getProfit());
 
+						// Check if this item should be pinned
+						Map<Integer, String> pinnedItemIds = getPinnedItemIds();
+						boolean isPinned = pinnedItemIds.containsKey(index) &&
+							pinnedItemIds.get(index).equals(updatedItem.getId());
+
 						SwingUtilities.invokeLater(() -> {
 							panel.updateSuggestion(index, updatedItem);
+							panel.setPinned(index, isPinned);
 							panel.revalidate();
 							panel.repaint();
 						});

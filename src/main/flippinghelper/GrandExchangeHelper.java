@@ -1,6 +1,8 @@
 package flippinghelper;
 
 import net.runelite.api.Client;
+import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
 
@@ -155,5 +157,53 @@ public class GrandExchangeHelper {
             }
         }
         return -1;
+    }
+
+    /**
+     * Get the GrandExchangeOffer for a specific slot.
+     * @param slot slot index (0-7)
+     * @return GrandExchangeOffer or null if no offer in slot
+     */
+    public GrandExchangeOffer getOffer(int slot) {
+        if (slot < 0 || slot > 7) {
+            return null;
+        }
+        GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+        if (offers == null || slot >= offers.length) {
+            return null;
+        }
+        return offers[slot];
+    }
+
+    /**
+     * Check if a slot has an active offer (buying or selling).
+     * @param slot slot index (0-7)
+     * @return true if slot has an active offer
+     */
+    public boolean hasActiveOffer(int slot) {
+        GrandExchangeOffer offer = getOffer(slot);
+        if (offer == null) {
+            return false;
+        }
+        GrandExchangeOfferState state = offer.getState();
+        // Active states: BUYING, SELLING, BOUGHT, SOLD
+        // Inactive states: EMPTY, CANCELLED_BUY, CANCELLED_SELL
+        return state == GrandExchangeOfferState.BUYING
+            || state == GrandExchangeOfferState.SELLING
+            || state == GrandExchangeOfferState.BOUGHT
+            || state == GrandExchangeOfferState.SOLD;
+    }
+
+    /**
+     * Get the item ID for an active offer in a slot.
+     * @param slot slot index (0-7)
+     * @return item ID or -1 if no active offer
+     */
+    public int getOfferItemId(int slot) {
+        GrandExchangeOffer offer = getOffer(slot);
+        if (offer == null) {
+            return -1;
+        }
+        return offer.getItemId();
     }
 }

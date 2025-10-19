@@ -76,6 +76,19 @@ public class FlippingHelperPanel extends PluginPanel {
         for (int i = 0; i < suggestionRows.size(); i++) {
             if (i < items.size()) {
                 suggestionRows.get(i).updateItem(items.get(i));
+                suggestionRows.get(i).setPinned(false);
+            } else {
+                suggestionRows.get(i).clear();
+            }
+        }
+    }
+
+    public void updateSuggestionsWithPinning(List<FlippingItem> items, java.util.Set<Integer> pinnedIndices) {
+        for (int i = 0; i < suggestionRows.size(); i++) {
+            if (i < items.size()) {
+                suggestionRows.get(i).updateItem(items.get(i));
+                boolean isPinned = pinnedIndices.contains(i);
+                suggestionRows.get(i).setPinned(isPinned);
             } else {
                 suggestionRows.get(i).clear();
             }
@@ -85,6 +98,12 @@ public class FlippingHelperPanel extends PluginPanel {
     public void updateSuggestion(int index, FlippingItem item) {
         if (index >= 0 && index < suggestionRows.size()) {
             suggestionRows.get(index).updateItem(item);
+        }
+    }
+
+    public void setPinned(int index, boolean pinned) {
+        if (index >= 0 && index < suggestionRows.size()) {
+            suggestionRows.get(index).setPinned(pinned);
         }
     }
 
@@ -119,6 +138,7 @@ public class FlippingHelperPanel extends PluginPanel {
         private final JButton nextItemButton;
         private final JButton refreshPricesButton;
         private boolean selected = false;
+        private boolean pinned = false;
         private FlippingItem currentItem = null;
 
         public SuggestionRow(int index) {
@@ -244,18 +264,40 @@ public class FlippingHelperPanel extends PluginPanel {
             updateBorder();
         }
 
-        private void updateBorder() {
-            if (selected) {
-                panel.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(new Color(255, 165, 0), 3), // Laranja
-                    new EmptyBorder(5, 5, 5, 5)
-                ));
+        public void setPinned(boolean pinned) {
+            this.pinned = pinned;
+            updateBorder();
+            // Disable "next item" button for pinned items
+            nextItemButton.setEnabled(!pinned);
+            if (pinned) {
+                nextItemButton.setToolTipText("Cannot dismiss pinned items (active GE offer)");
             } else {
-                panel.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(Color.GRAY, 1),
-                    new EmptyBorder(5, 5, 5, 5)
-                ));
+                nextItemButton.setToolTipText("Show next item");
             }
+        }
+
+        private void updateBorder() {
+            Color borderColor;
+            int borderWidth;
+
+            if (pinned) {
+                // Pinned items: green border (active GE offer)
+                borderColor = new Color(46, 204, 113); // Green
+                borderWidth = 2;
+            } else if (selected) {
+                // Selected items: orange border
+                borderColor = new Color(255, 165, 0); // Orange
+                borderWidth = 3;
+            } else {
+                // Normal items: gray border
+                borderColor = Color.GRAY;
+                borderWidth = 1;
+            }
+
+            panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(borderColor, borderWidth),
+                new EmptyBorder(5, 5, 5, 5)
+            ));
         }
 
         public JPanel getPanel() {

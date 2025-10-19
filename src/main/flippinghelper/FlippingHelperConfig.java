@@ -93,6 +93,32 @@ public interface FlippingHelperConfig extends Config
 		return DumpFilter.ALL;
 	}
 
+	@ConfigItem(
+		keyName = "minQuantity",
+		name = "Minimum Quantity",
+		description = "Minimum quantity to trade (0 = no minimum)",
+		section = filterSection,
+		position = 7
+	)
+	@Range(min = 0)
+	default int minQuantity()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
+		keyName = "maxTotalInvestment",
+		name = "Maximum Total Investment",
+		description = "Maximum total GP to invest (quantity × buy price, 0 = no maximum)",
+		section = filterSection,
+		position = 8
+	)
+	@Range(min = 0)
+	default int maxTotalInvestment()
+	{
+		return 0;
+	}
+
 	enum DumpFilter
 	{
 		ALL("Show All"),
